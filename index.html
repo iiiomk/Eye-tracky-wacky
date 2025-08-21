@@ -1,68 +1,72 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>eye tracky wacky</title>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/facemesh"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+  <meta charset="UTF-8">
+  <title>eye tracky wacky</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/facemesh"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
 </head>
 <body>
   <h2>Blink Detection</h2>
   <video id="webcam" autoplay playsinline width="640" height="480"></video>
-  <h2 id ='result'>You are not blinking.</h2>
-  <h2 id ='value' style="color: red"></h2>
+  <h2 id="result">You are not blinking.</h2>
+  <h2 id="value" style="color: red"></h2>
+
   <script>
-    // Get webcam
+    // Grab elements
     const video = document.getElementById("webcam");
+    const result = document.getElementById("result");
+    const value = document.getElementById("value");
+
+    // Start webcam
     navigator.mediaDevices.getUserMedia({ video: true })
       .then(stream => video.srcObject = stream)
       .catch(err => console.error("Error: ", err));
+
+    // Setup FaceMesh
+    const faceMesh = new FaceMesh({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/facemesh/${file}`
+    });
+    faceMesh.setOptions({
+      maxNumFaces: 1,
+      refineLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+
+    faceMesh.onResults(results => {
+      if (results.multiFaceLandmarks.length > 0) {
+        const landmarks = results.multiFaceLandmarks[0];
+
+        // Left eye points (upper and lower eyelid)
+        const top = landmarks[159];
+        const bottom = landmarks[145];
+
+        // Distance between eyelids (normalized)
+        const eyeOpen = Math.abs(top.y - bottom.y);
+
+        // Blink detection
+        if (eyeOpen < 0.018) {  // tweak threshold for your camera
+          console.log("Blink detected!");
+          result.innerText = "You are blinking.";
+        } else {
+          result.innerText = "You are NOT blinking.";
+        }
+
+        // Show raw value
+        value.innerText = "Eye ratio: " + eyeOpen.toFixed(4);
+      }
+    });
+
+    // Attach camera
+    const camera = new Camera(video, {
+      onFrame: async () => {
+        await faceMesh.send({ image: video });
+      },
+      width: 640,
+      height: 480
+    });
+    camera.start();
   </script>
-<script>
-  var result = document.getElementById("result");
-  var value = document.getElementById("value")
-  const video = document.getElementById("webcam");
-
-  const faceMesh = new FaceMesh({
-    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/facemesh/${file}`
-  });
-  faceMesh.setOptions({
-    maxNumFaces: 1,
-    refineLandmarks: true,
-    minDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5
-  });
-
-  faceMesh.onResults(results => {
-    if (results.multiFaceLandmarks.length > 0) {
-      const landmarks = results.multiFaceLandmarks[0];
-
-      // Example: left eye points
-      const top = landmarks[159];
-      const bottom = landmarks[145];
-
-      // Distance between eyelids
-      const eyeOpen = Math.abs(top.y - bottom.y);
-
-      if (eyeOpen < 0.1) {
-            console.log("Blink detected!");
-            result.innerText = "You are blinking."
-      }
-      else{
-            result.innerText = "You are NOT blinking."
-      }
-      value.innerText = eyeOpen.toString()
-    }
-  });
-
-  const camera = new Camera(video, {
-    onFrame: async () => {
-      await faceMesh.send({ image: video });
-    },
-    width: 640,
-    height: 480
-  });
-  camera.start();
-</script>
 </body>
 </html>
