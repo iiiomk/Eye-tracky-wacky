@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>eye tracky wacky</title>
+</head>
+<body>
+  <h2>Blink Detection</h2>
+  <video id="webcam" autoplay playsinline width="640" height="480"></video>
+  <script>
+    // Get webcam
+    const video = document.getElementById("webcam");
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => video.srcObject = stream)
+      .catch(err => console.error("Error: ", err));
+  </script>
+</body>
+</html>
