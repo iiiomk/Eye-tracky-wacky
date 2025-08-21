@@ -3,12 +3,31 @@
 <head>
   <meta charset="UTF-8">
   <title>eye tracky wacky</title>
+  <!-- Mediapipe scripts -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/facemesh"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils"></script>
+  <style>
+    #container {
+      position: relative;
+      width: 640px;
+      height: 480px;
+    }
+    #webcam, #output_canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 640px;
+      height: 480px;
+    }
+  </style>
 </head>
 <body>
   <h2>Blink Detection</h2>
-  <video id="webcam" autoplay playsinline width="640" height="480"></video>
+  <div id="container">
+    <video id="webcam" autoplay playsinline></video>
+    <canvas id="output_canvas"></canvas>
+  </div>
   <h2 id="result">You are not blinking.</h2>
   <h2 id="value" style="color: red"></h2>
 
@@ -17,6 +36,8 @@
     const video = document.getElementById("webcam");
     const result = document.getElementById("result");
     const value = document.getElementById("value");
+    const canvasElement = document.getElementById("output_canvas");
+    const canvasCtx = canvasElement.getContext("2d");
 
     // Start webcam
     navigator.mediaDevices.getUserMedia({ video: true })
@@ -35,27 +56,33 @@
     });
 
     faceMesh.onResults(results => {
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+      // Draw webcam image
+      canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
       if (results.multiFaceLandmarks.length > 0) {
         const landmarks = results.multiFaceLandmarks[0];
 
-        // Left eye points (upper and lower eyelid)
+        // Draw landmarks
+        drawConnectors(canvasCtx, landmarks, FACEMESH_TESSELATION, {color: '#C0C0C0', lineWidth: 0.5});
+        drawConnectors(canvasCtx, landmarks, FACEMESH_LEFT_EYE, {color: '#FF0000'});
+        drawConnectors(canvasCtx, landmarks, FACEMESH_RIGHT_EYE, {color: '#00FF00'});
+
+        // Eye blink detection (left eye example)
         const top = landmarks[159];
         const bottom = landmarks[145];
-
-        // Distance between eyelids (normalized)
         const eyeOpen = Math.abs(top.y - bottom.y);
 
-        // Blink detection
-        if (eyeOpen < 0.018) {  // tweak threshold for your camera
-          console.log("Blink detected!");
+        if (eyeOpen < 0.018) {
           result.innerText = "You are blinking.";
         } else {
           result.innerText = "You are NOT blinking.";
         }
-
-        // Show raw value
         value.innerText = "Eye ratio: " + eyeOpen.toFixed(4);
       }
+      canvasCtx.restore();
     });
 
     // Attach camera
