@@ -42,7 +42,7 @@
       // Distance between eyelids
       const eyeOpen = Math.abs(top.y - bottom.y);
 
-      if (eyeOpen < 0.015) {
+      if (eyeOpen < 0.1) {
             console.log("Blink detected!");
             result.innerText = "You are blinking."
       }
