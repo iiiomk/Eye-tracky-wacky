@@ -1,52 +1,81 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>eye tracky wacky</title>
-  <!-- Mediapipe scripts -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/facemesh"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils"></script>
+  <meta charset="utf-8" />
+  <title>Blink Detection — Webcam</title>
+
+  <!-- MediaPipe imports -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
   <style>
-    #container {
-      position: relative;
-      width: 640px;
-      height: 480px;
-    }
-    #webcam, #output_canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 640px;
-      height: 480px;
-    }
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; }
+    #container { position: relative; width: 640px; height: 480px; }
+    #webcam, #output_canvas { position: absolute; top: 0; left: 0; width: 640px; height: 480px; }
+    canvas { background: #000; }
+    #status { margin-top: 10px; }
   </style>
 </head>
 <body>
-  <h2>Blink Detection</h2>
+  <h2>Blink Detection — Webcam</h2>
   <div id="container">
-    <video id="webcam" autoplay playsinline></video>
+    <video id="webcam" autoplay playsinline muted></video>
     <canvas id="output_canvas"></canvas>
   </div>
-  <h2 id="result">You are not blinking.</h2>
-  <h2 id="value" style="color: red"></h2>
+
+  <div id="status">
+    <strong id="result">Waiting for camera…</strong>
+    <div id="value" style="color: #b22222"></div>
+  </div>
 
   <script>
-    // Grab elements
-    const video = document.getElementById("webcam");
-    const result = document.getElementById("result");
-    const value = document.getElementById("value");
-    const canvasElement = document.getElementById("output_canvas");
-    const canvasCtx = canvasElement.getContext("2d");
+    const video = document.getElementById('webcam');
+    const canvasElement = document.getElementById('output_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const resultEl = document.getElementById('result');
+    const valueEl = document.getElementById('value');
 
-    // Start webcam
-    navigator.mediaDevices.getUserMedia({ video: true })
-      .then(stream => video.srcObject = stream)
-      .catch(err => console.error("Error: ", err));
+    // Convert normalized landmark to pixel coords on canvas
+    function toPixel(landmark) {
+      return { x: landmark.x * canvasElement.width, y: landmark.y * canvasElement.height };
+    }
+    function distPx(a, b) {
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      return Math.hypot(dx, dy);
+    }
+
+    // Compute EAR for one eye using chosen landmark indices (MediaPipe indexing)
+    function computeEARFromIndices(landmarks, outerIdx, innerIdx, upper1Idx, lower1Idx, upper2Idx, lower2Idx) {
+      const pOuter = toPixel(landmarks[outerIdx]);
+      const pInner = toPixel(landmarks[innerIdx]);
+      const pU1 = toPixel(landmarks[upper1Idx]);
+      const pL1 = toPixel(landmarks[lower1Idx]);
+      const pU2 = toPixel(landmarks[upper2Idx]);
+      const pL2 = toPixel(landmarks[lower2Idx]);
+
+      const horiz = distPx(pOuter, pInner);
+      const vert1 = distPx(pU1, pL1);
+      const vert2 = distPx(pU2, pL2);
+      // avoid division by zero
+      if (horiz < 1e-6) return 0;
+      return (vert1 + vert2) / (2.0 * horiz);
+    }
+
+    // We'll use these indices (MediaPipe FaceMesh)
+    // Left eye indices (approx): outer 33, inner 133, upper 159, lower 145, upper2 153, lower2 144
+    const LEFT = { outer: 33, inner: 133, upper1: 159, lower1: 145, upper2: 153, lower2: 144 };
+    // Right eye indices (approx): outer 362, inner 263, upper 386, lower 374, upper2 387, lower2 373
+    const RIGHT = { outer: 362, inner: 263, upper1: 386, lower1: 374, upper2: 387, lower2: 373 };
+
+    // Optionally highlight these landmark indices
+    const highlightLeft = [LEFT.outer, LEFT.inner, LEFT.upper1, LEFT.lower1, LEFT.upper2, LEFT.lower2];
+    const highlightRight = [RIGHT.outer, RIGHT.inner, RIGHT.upper1, RIGHT.lower1, RIGHT.upper2, RIGHT.lower2];
 
     // Setup FaceMesh
     const faceMesh = new FaceMesh({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/facemesh/${file}`
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
     });
     faceMesh.setOptions({
       maxNumFaces: 1,
@@ -56,44 +85,85 @@
     });
 
     faceMesh.onResults(results => {
+      // match internal canvas size to video pixels
+      if (canvasElement.width !== video.videoWidth || canvasElement.height !== video.videoHeight) {
+        canvasElement.width = video.videoWidth || 640;
+        canvasElement.height = video.videoHeight || 480;
+      }
+
       canvasCtx.save();
       canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-
-      // Draw webcam image
       canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
-      if (results.multiFaceLandmarks.length > 0) {
+      if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
         const landmarks = results.multiFaceLandmarks[0];
 
-        // Draw landmarks
-        drawConnectors(canvasCtx, landmarks, FACEMESH_TESSELATION, {color: '#C0C0C0', lineWidth: 0.5});
-        drawConnectors(canvasCtx, landmarks, FACEMESH_LEFT_EYE, {color: '#FF0000'});
-        drawConnectors(canvasCtx, landmarks, FACEMESH_RIGHT_EYE, {color: '#00FF00'});
+        // Draw small dots for the eye landmarks
+        canvasCtx.fillStyle = 'rgba(255, 0, 0, 0.9)';
+        highlightLeft.forEach(i => {
+          const p = toPixel(landmarks[i]);
+          canvasCtx.beginPath();
+          canvasCtx.arc(p.x, p.y, Math.max(2, canvasElement.width / 320), 0, Math.PI * 2);
+          canvasCtx.fill();
+        });
+        canvasCtx.fillStyle = 'rgba(0, 200, 0, 0.9)';
+        highlightRight.forEach(i => {
+          const p = toPixel(landmarks[i]);
+          canvasCtx.beginPath();
+          canvasCtx.arc(p.x, p.y, Math.max(2, canvasElement.width / 320), 0, Math.PI * 2);
+          canvasCtx.fill();
+        });
 
-        // Eye blink detection (left eye example)
-        const top = landmarks[159];
-        const bottom = landmarks[145];
-        const eyeOpen = Math.abs(top.y - bottom.y);
+        // Compute EARs
+        const leftEAR = computeEARFromIndices(landmarks, LEFT.outer, LEFT.inner, LEFT.upper1, LEFT.lower1, LEFT.upper2, LEFT.lower2);
+        const rightEAR = computeEARFromIndices(landmarks, RIGHT.outer, RIGHT.inner, RIGHT.upper1, RIGHT.lower1, RIGHT.upper2, RIGHT.lower2);
+        const ear = (leftEAR + rightEAR) / 2.0;
 
-        if (eyeOpen < 0.018) {
-          result.innerText = "You are blinking.";
+        valueEl.innerText = `EAR: ${ear.toFixed(3)} (left ${leftEAR.toFixed(3)}, right ${rightEAR.toFixed(3)})`;
+
+        const BLINK_THRESHOLD = 0.21; // adjust as needed for your camera/lighting
+        if (ear > 0 && ear < BLINK_THRESHOLD) {
+          resultEl.innerText = "You are blinking.";
         } else {
-          result.innerText = "You are NOT blinking.";
+          resultEl.innerText = "You are NOT blinking.";
         }
-        value.innerText = "Eye ratio: " + eyeOpen.toFixed(4);
+      } else {
+        resultEl.innerText = "No face detected.";
+        valueEl.innerText = "";
       }
+
       canvasCtx.restore();
     });
 
-    // Attach camera
-    const camera = new Camera(video, {
-      onFrame: async () => {
-        await faceMesh.send({ image: video });
-      },
-      width: 640,
-      height: 480
+    // Use MediaPipe Camera helper to capture webcam frames
+    // Note: Camera requires secure context (https) or localhost.
+    let camera = null;
+    function startCamera() {
+      try {
+        camera = new Camera(video, {
+          onFrame: async () => {
+            await faceMesh.send({ image: video });
+          },
+          width: 640,
+          height: 480
+        });
+        camera.start();
+        resultEl.innerText = "Camera started — looking for face…";
+      } catch (err) {
+        console.error("Camera start error:", err);
+        resultEl.innerText = "Camera failed to start. Check permissions and secure context.";
+      }
+    }
+
+    // Start when page loads
+    window.addEventListener('load', () => {
+      // Try to start camera immediately; the browser will prompt for permission
+      startCamera();
+      // If user interacts (some browsers block autoplay until a gesture), fallback on click
+      document.addEventListener('click', () => {
+        if (!camera) startCamera();
+      }, { once: true });
     });
-    camera.start();
   </script>
 </body>
 </html>
