@@ -10,6 +10,7 @@
   <h2>Blink Detection</h2>
   <video id="webcam" autoplay playsinline width="640" height="480"></video>
   <h2 id ='result'>You are not blinking.</h2>
+  <h2 id ='value' style="color: red"></h2>
   <script>
     // Get webcam
     const video = document.getElementById("webcam");
@@ -19,6 +20,7 @@
   </script>
 <script>
   var result = document.getElementById("result");
+  var value = document.getElementById("value")
   const video = document.getElementById("webcam");
 
   const faceMesh = new FaceMesh({
@@ -49,6 +51,7 @@
       else{
             result.innerText = "You are NOT blinking."
       }
+      value.innerText = eyeOpen.toString()
     }
   });
 
